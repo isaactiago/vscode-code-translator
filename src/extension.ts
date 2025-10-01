@@ -1,60 +1,60 @@
 import * as vscode from 'vscode';
 import { traduzirPalavra } from './api/api-traducao';
-import { getTraducaoDoDicionario } from './api/api-consulta-repository';
 import { normalizarPalavra } from './utils/regex';
+
+const traducoesCache = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext) {
 	const disposable = vscode.commands.registerCommand('extension.traduzirSelecionado', async () => {
 		const editor = vscode.window.activeTextEditor;
-
-		if (! editor) {
+		if (!editor) {
 			return;
 		}
 
 		const posicaoSelecionada = editor.selection;
-		let palavraSelecionada = editor.document.getText(posicaoSelecionada);
+		const palavraOriginal = editor.document.getText(posicaoSelecionada);
 
-		if (! palavraSelecionada) {
+		if (!palavraOriginal) {
 			vscode.window.showInformationMessage('Nenhuma palavra selecionada');
 			return;
 		}
 
-		palavraSelecionada = normalizarPalavra(palavraSelecionada);
+		const palavraSem$ = palavraOriginal.replace(/^\$/, '');
+		const palavraNormalizada = normalizarPalavra(palavraSem$);
 
-	/* 	const dicionario = await getTraducaoDoDicionario();
-		const traducaoDoDicionarioFinded = dicionario?.[palavraSelecionada]; */
-
-		let traducao: string | void;
-
-		/* if (traducaoDoDicionarioFinded !== undefined) {
-			traducao = traducaoDoDicionarioFinded.traducao;
-		} else {
-		} */
-
-
-
-		traducao = await traduzirPalavra(palavraSelecionada);
-
-
-
-		const provider = vscode.languages.registerHoverProvider('*', {
-			provideHover(docs, pos) {
-				const range = docs.getWordRangeAtPosition(pos);
-				if (range ) {
-					const markdown = new vscode.MarkdownString(`**${palavraSelecionada}** → ${traducao}`);
-					markdown.isTrusted = true;
-					console.log(palavraSelecionada);
-					return new vscode.Hover(markdown);
-				}
-			}
-		});
-
-		context.subscriptions.push(provider);
+		const traducao = await traduzirPalavra(palavraNormalizada);
+		if (traducao) {
+			traducoesCache.set(palavraOriginal, traducao);
+			traducoesCache.set(palavraSem$, traducao);
+		}
 
 		await vscode.commands.executeCommand('editor.action.showHover');
 	});
 
 	context.subscriptions.push(disposable);
+
+	const provider = vscode.languages.registerHoverProvider('*', {
+		provideHover(docs, pos) {
+			const range = docs.getWordRangeAtPosition(pos);
+			
+			if (!range) {
+				return;
+			}
+
+			const palavra = docs.getText(range);
+			const palavraSem$ = palavra.replace(/^\$/, '');
+
+			const traducao = traducoesCache.get(palavra) || traducoesCache.get(palavraSem$);
+
+			if (traducao) {
+				const markdown = new vscode.MarkdownString(`**${palavraSem$}** → ${traducao}`);
+				markdown.isTrusted = true;
+				return new vscode.Hover(markdown);
+			}
+		}
+	});
+
+	context.subscriptions.push(provider);
 }
 
 export function deactivate() {}
