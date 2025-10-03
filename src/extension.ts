@@ -1,8 +1,27 @@
 import * as vscode from 'vscode';
 import { traduzirPalavra } from './api/api-traducao';
 import { normalizarPalavra } from './utils/regex';
+import { carregarDicionarioGithub } from './api/api-consulta-gitHub';
 
 const traducoesCache = new Map<string, string>();
+
+//esse metodo esta com duas responsibilidades, a de retorna a tradução do dicionario caso tenha se nao nele retorna a de outra api
+async function traduzirPalavraComGitHub(word: string): Promise<string | undefined> {
+	const dicionario = await carregarDicionarioGithub();
+
+	if (dicionario[word]?.traducao) {
+		return dicionario[word].traducao;
+	}
+
+	const normalizada = normalizarPalavra(word);
+	const traducao = await traduzirPalavra(normalizada);
+
+	if (traducao) {
+		traducoesCache.set(word, traducao);
+	}
+
+	return traducao;
+}
 
 export function activate(context: vscode.ExtensionContext) {
 	const disposable = vscode.commands.registerCommand('extension.traduzirSelecionado', async () => {
@@ -20,9 +39,12 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		const palavraSem$ = palavraOriginal.replace(/^\$/, '');
-		const palavraNormalizada = normalizarPalavra(palavraSem$);
+		let traducao: string | undefined = traducoesCache.get(palavraOriginal) || traducoesCache.get(palavraSem$);
 
-		const traducao = await traduzirPalavra(palavraNormalizada);
+		if (!traducao) {
+			traducao = await traduzirPalavraComGitHub(palavraSem$);
+		}
+
 		if (traducao) {
 			traducoesCache.set(palavraOriginal, traducao);
 			traducoesCache.set(palavraSem$, traducao);
@@ -36,7 +58,6 @@ export function activate(context: vscode.ExtensionContext) {
 	const provider = vscode.languages.registerHoverProvider('*', {
 		provideHover(docs, pos) {
 			const range = docs.getWordRangeAtPosition(pos);
-			
 			if (!range) {
 				return;
 			}
@@ -45,16 +66,17 @@ export function activate(context: vscode.ExtensionContext) {
 			const palavraSem$ = palavra.replace(/^\$/, '');
 
 			const traducao = traducoesCache.get(palavra) || traducoesCache.get(palavraSem$);
-
-			if (traducao) {
-				const markdown = new vscode.MarkdownString(`**${palavraSem$}** → ${traducao}`);
-				markdown.isTrusted = true;
-				return new vscode.Hover(markdown);
+			if (!traducao) {
+				return;
 			}
+
+			const markdown = new vscode.MarkdownString(`**${palavraSem$}** → ${traducao}`);
+			markdown.isTrusted = true;
+			return new vscode.Hover(markdown);
 		}
 	});
 
 	context.subscriptions.push(provider);
 }
 
-export function deactivate() {}
+export function deactivate() { }
