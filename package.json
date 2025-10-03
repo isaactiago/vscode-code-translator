@@ -9,15 +9,25 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "vscode-var-translator.helloWorld",
-        "title": "Hello World"
+        "command": "extension.traduzirSelecionado",
+        "title": "Traduzir palavra selecionada"
       }
-    ]
+    ],
+
+    "menus": {
+      "editor/context": [
+        {
+          "command": "extension.traduzirSelecionado",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
