@@ -1,27 +1,6 @@
 import * as vscode from 'vscode';
-import { traduzirPalavra } from './api/api-traducao';
-import { normalizarPalavra } from './utils/regex';
-import { carregarDicionarioGithub } from './api/api-consulta-gitHub';
-
-const traducoesCache = new Map<string, string>();
-
-//esse metodo esta com duas responsibilidades, a de retorna a tradução do dicionario caso tenha se nao nele retorna a de outra api
-async function traduzirPalavraComGitHub(word: string): Promise<string | undefined> {
-	const dicionario = await carregarDicionarioGithub();
-
-	if (dicionario[word]?.traducao) {
-		return dicionario[word].traducao;
-	}
-
-	const normalizada = normalizarPalavra(word);
-	const traducao = await traduzirPalavra(normalizada);
-
-	if (traducao) {
-		traducoesCache.set(word, traducao);
-	}
-
-	return traducao;
-}
+import { traducoesCache } from './utils/cache';
+import { traduzirPalavraComGitHubOuApi } from './services/traducao-service';
 
 export function activate(context: vscode.ExtensionContext) {
 	const disposable = vscode.commands.registerCommand('extension.traduzirSelecionado', async () => {
@@ -39,14 +18,13 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		const palavraSem$ = palavraOriginal.replace(/^\$/, '');
-		let traducao: string | undefined = traducoesCache.get(palavraOriginal) || traducoesCache.get(palavraSem$);
+		let traducao: string | undefined = traducoesCache.get(palavraSem$);
 
 		if (!traducao) {
-			traducao = await traduzirPalavraComGitHub(palavraSem$);
+			traducao = await traduzirPalavraComGitHubOuApi(palavraSem$);
 		}
 
 		if (traducao) {
-			traducoesCache.set(palavraOriginal, traducao);
 			traducoesCache.set(palavraSem$, traducao);
 		}
 
@@ -65,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const palavra = docs.getText(range);
 			const palavraSem$ = palavra.replace(/^\$/, '');
 
-			const traducao = traducoesCache.get(palavra) || traducoesCache.get(palavraSem$);
+			const traducao = traducoesCache.get(palavraSem$);
 			if (!traducao) {
 				return;
 			}
